@@ -1,12 +1,13 @@
-package main
+package ovftool
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/mitchellh/packer/common"
 	"github.com/mitchellh/packer/packer"
-	"github.com/mitchellh/packer/packer/plugin"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -17,10 +18,17 @@ type Config struct {
 	TargetPath          string `mapstructure:"target"`
 	TargetType          string `mapstructure:"format"`
 	Compression         uint   `mapstructure:"compression"`
+	tpl                 *packer.ConfigTemplate
 }
 
 type OVFPostProcessor struct {
 	cfg Config
+}
+
+type OutputPathTemplate struct {
+	ArtifactId string
+	BuildName  string
+	Provider   string
 }
 
 func (p *OVFPostProcessor) Configure(raws ...interface{}) error {
@@ -28,11 +36,11 @@ func (p *OVFPostProcessor) Configure(raws ...interface{}) error {
 	if err != nil {
 		return err
 	}
-	tpl, err := packer.NewConfigTemplate()
+	p.cfg.tpl, err = packer.NewConfigTemplate()
 	if err != nil {
 		return err
 	}
-	tpl.UserVars = p.cfg.PackerUserVars
+	p.cfg.tpl.UserVars = p.cfg.PackerUserVars
 
 	if p.cfg.TargetType == "" {
 		p.cfg.TargetType = "ovf"
@@ -53,8 +61,7 @@ func (p *OVFPostProcessor) Configure(raws ...interface{}) error {
 			errs, fmt.Errorf("Error: Could not find ovftool executable.", err))
 	}
 
-	p.cfg.TargetPath, err = tpl.Process(p.cfg.TargetPath, nil)
-	if err != nil {
+	if err = p.cfg.tpl.Validate(p.cfg.TargetPath); err != nil {
 		errs = packer.MultiErrorAppend(
 			errs, fmt.Errorf("Error parsing target template: %s", err))
 	}
@@ -62,6 +69,11 @@ func (p *OVFPostProcessor) Configure(raws ...interface{}) error {
 	if !(p.cfg.TargetType == "ovf" || p.cfg.TargetType == "ova") {
 		errs = packer.MultiErrorAppend(
 			errs, errors.New("Invalid target type. Only 'ovf' or 'ova' are allowed."))
+	}
+
+	if !(p.cfg.Compression >= 0 && p.cfg.Compression <= 9) {
+		errs = packer.MultiErrorAppend(
+			errs, errors.New("Invalid compression level. Must be between 1 and 9, or 0 for no compression."))
 	}
 
 	if len(errs.Errors) > 0 {
@@ -86,21 +98,36 @@ func (p *OVFPostProcessor) PostProcess(ui packer.Ui, artifact packer.Artifact) (
 		return nil, false, fmt.Errorf("VMX file could not be located.")
 	}
 
+	targetPath, err := p.cfg.tpl.Process(p.cfg.TargetPath, &OutputPathTemplate{
+		ArtifactId: artifact.Id(),
+		BuildName:  p.cfg.PackerBuildName,
+		Provider:   "vmware",
+	})
+	if err != nil {
+		return nil, false, err
+	}
+
+	compression := ""
+	if p.cfg.Compression > 0 {
+		compression = "--compress=" + strconv.Itoa(int(p.cfg.Compression))
+	}
+
 	cmd := exec.Command(
 		executable,
 		"--targetType="+p.cfg.TargetType,
 		"--acceptAllEulas",
+		compression,
 		vmx,
-		p.cfg.TargetPath)
-
-	err := cmd.Run()
+		targetPath,
+	)
+	var buffer bytes.Buffer
+	cmd.Stdout = &buffer
+	cmd.Stderr = &buffer
+	err = cmd.Run()
 	if err != nil {
-		return nil, false, fmt.Errorf("Unable to execute ovftool.", nil)
+		return nil, false, fmt.Errorf("Unable to execute ovftool. ", buffer.String())
 	}
+	ui.Message(fmt.Sprintf("%s", buffer.String()))
 
 	return artifact, false, nil
-}
-
-func main() {
-	plugin.ServePostProcessor(new(OVFPostProcessor))
 }
