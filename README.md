@@ -24,7 +24,7 @@ Available configuration options:
 
 * `target`: The path where the artifact should be created, without the file 
   extension. This is a [configuration template](http://www.packer.io/docs/templates/configuration-templates.html). 
-  Defaults to "packer_{{.BuildName}}_{{.Provider}}"
+  Defaults to "`packer_{{.BuildName}}_{{.Provider}}`"
 * `format`:      The target type to create, either "ova" or "ovf". Defaults 
   to "ovf" if not specified.
 * `compression`: The compression level to use when creating the artifact. A 
