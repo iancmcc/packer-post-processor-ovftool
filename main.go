@@ -6,5 +6,10 @@ import (
 )
 
 func main() {
-	plugin.ServePostProcessor(new(ovftool.OVFPostProcessor))
+	server, err := plugin.Server()
+	if err != nil {
+		panic(err)
+	}
+	server.RegisterPostProcessor(new(ovftool.OVFPostProcessor))
+	server.Serve()
 }
