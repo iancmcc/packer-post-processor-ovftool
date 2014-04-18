@@ -7,7 +7,6 @@ import (
 	"github.com/mitchellh/packer/common"
 	"github.com/mitchellh/packer/packer"
 	"os/exec"
-	"strconv"
 	"strings"
 )
 
@@ -58,7 +57,7 @@ func (p *OVFPostProcessor) Configure(raws ...interface{}) error {
 	_, err = exec.LookPath(executable)
 	if err != nil {
 		errs = packer.MultiErrorAppend(
-			errs, fmt.Errorf("Error: Could not find ovftool executable.", err))
+			errs, fmt.Errorf("Error: Could not find ovftool executable: %s", err))
 	}
 
 	if err = p.cfg.tpl.Validate(p.cfg.TargetPath); err != nil {
@@ -107,25 +106,28 @@ func (p *OVFPostProcessor) PostProcess(ui packer.Ui, artifact packer.Artifact) (
 		return nil, false, err
 	}
 
-	compression := ""
-	if p.cfg.Compression > 0 {
-		compression = "--compress=" + strconv.Itoa(int(p.cfg.Compression))
+	// build the arguments
+	args := []string{
+		"--targetType=" + p.cfg.TargetType,
+		"--acceptAllEulas",
 	}
 
-	cmd := exec.Command(
-		executable,
-		"--targetType="+p.cfg.TargetType,
-		"--acceptAllEulas",
-		compression,
-		vmx,
-		targetPath,
-	)
+	// append --compression, if it is set
+	if p.cfg.Compression > 0 {
+		args = append(args, fmt.Sprintf("--compress=%d", p.cfg.Compression))
+	}
+
+	// add the source/target
+	args = append(args, vmx, targetPath)
+
+	ui.Message(fmt.Sprintf("Executing ovftool with arguments: %+v", args))
+	cmd := exec.Command(executable, args...)
 	var buffer bytes.Buffer
 	cmd.Stdout = &buffer
 	cmd.Stderr = &buffer
 	err = cmd.Run()
 	if err != nil {
-		return nil, false, fmt.Errorf("Unable to execute ovftool. ", buffer.String())
+		return nil, false, fmt.Errorf("Unable to execute ovftool: %s", buffer.String())
 	}
 	ui.Message(fmt.Sprintf("%s", buffer.String()))
 
