@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	vmwcommon "github.com/mitchellh/packer/builder/vmware/common"
 	"github.com/mitchellh/packer/common"
 	"github.com/mitchellh/packer/packer"
 	"os/exec"
@@ -82,6 +83,26 @@ func (p *OVFPostProcessor) Configure(raws ...interface{}) error {
 	return nil
 }
 
+func (p *OVFPostProcessor) stripDrives(vmx string) error {
+	vmxData, err := vmwcommon.ReadVMX(vmx)
+	if err != nil {
+		return err
+	}
+	for k, _ := range vmxData {
+		if strings.HasPrefix(k, "floppy0.") {
+			delete(vmxData, k)
+		}
+		if strings.HasPrefix(k, "ide1:0.file") {
+			delete(vmxData, k)
+		}
+	}
+	vmxData["floppy0.present"] = "FALSE"
+	vmxData["ide1:0.present"] = "FALSE"
+	if err := vmwcommon.WriteVMX(vmx, vmxData); err != nil {
+		return err
+	}
+}
+
 func (p *OVFPostProcessor) PostProcess(ui packer.Ui, artifact packer.Artifact) (packer.Artifact, bool, error) {
 	if artifact.BuilderId() != "mitchellh.vmware" {
 		return nil, false, fmt.Errorf("ovftool post-processor can only be used on VMware boxes: %s", artifact.BuilderId())
@@ -95,6 +116,11 @@ func (p *OVFPostProcessor) PostProcess(ui packer.Ui, artifact packer.Artifact) (
 	}
 	if vmx == "" {
 		return nil, false, fmt.Errorf("VMX file could not be located.")
+	}
+
+	// Strip DVD and floppy drives from the VMX
+	if err := p.stripDrives(vmx); err != nil {
+		return nil, false, fmt.Errorf("Couldn't strip floppy/DVD drives from VMX")
 	}
 
 	targetPath, err := p.cfg.tpl.Process(p.cfg.TargetPath, &OutputPathTemplate{
