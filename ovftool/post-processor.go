@@ -101,6 +101,7 @@ func (p *OVFPostProcessor) stripDrives(vmx string) error {
 	if err := vmwcommon.WriteVMX(vmx, vmxData); err != nil {
 		return err
 	}
+	return nil
 }
 
 func (p *OVFPostProcessor) PostProcess(ui packer.Ui, artifact packer.Artifact) (packer.Artifact, bool, error) {
