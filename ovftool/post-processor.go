@@ -18,6 +18,7 @@ type Config struct {
 	TargetPath          string `mapstructure:"target"`
 	TargetType          string `mapstructure:"format"`
 	Compression         uint   `mapstructure:"compression"`
+	Diskmode            string `mapstructure:"diskmode"`
 	tpl                 *packer.ConfigTemplate
 }
 
@@ -53,6 +54,10 @@ func (p *OVFPostProcessor) Configure(raws ...interface{}) error {
 		}
 	}
 
+	if p.cfg.Diskmode == "" {
+		p.cfg.Diskmode = "thin"
+	}
+
 	errs := new(packer.MultiError)
 
 	_, err = exec.LookPath(executable)
@@ -74,6 +79,11 @@ func (p *OVFPostProcessor) Configure(raws ...interface{}) error {
 	if !(p.cfg.Compression >= 0 && p.cfg.Compression <= 9) {
 		errs = packer.MultiErrorAppend(
 			errs, errors.New("Invalid compression level. Must be between 1 and 9, or 0 for no compression."))
+	}
+
+	if !(p.cfg.Diskmode == "thin" || p.cfg.Diskmode == "monolithicSparse" || p.cfg.Diskmode == "monolithicFlat" || p.cfg.Diskmode == "twoGbMaxExtentSparse" || p.cfg.Diskmode == "twoGbMaxExtentFlat" || p.cfg.Diskmode == "seSparse" || p.cfg.Diskmode == "eagerZeroedThick" || p.cfg.Diskmode == "thick" || p.cfg.Diskmode == "sparse" || p.cfg.Diskmode == "flat") {
+		errs = packer.MultiErrorAppend(
+			errs, errors.New("Invalid target type. Only 'ovf' or 'ova' are allowed."))
 	}
 
 	if len(errs.Errors) > 0 {
@@ -137,6 +147,7 @@ func (p *OVFPostProcessor) PostProcess(ui packer.Ui, artifact packer.Artifact) (
 	args := []string{
 		"--targetType=" + p.cfg.TargetType,
 		"--acceptAllEulas",
+                "--diskMode " + p.cfg.Diskmode,
 	}
 
 	// append --compression, if it is set
